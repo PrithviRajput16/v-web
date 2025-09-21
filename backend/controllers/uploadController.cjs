@@ -2,7 +2,7 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const url_prefix = require("../../data/variable").default;
+const url_prefix = require("../data/variable").default;
 
 
 
