@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 require('dotenv').config({ path: './config.env' });
 const path = require('path')
 
+// Import routes
 const aboutRouter = require('./routes/about.cjs');
 const collectionsRouter = require('./routes/collections.cjs');
 const serviceRouter = require('./routes/services.cjs');
@@ -16,37 +17,43 @@ const doctorRouter = require('./routes/doctor.cjs');
 const treatmentRoutes = require('./routes/treatments.cjs');
 const doctorTreatmentRouter = require('./routes/doctorTreatments.cjs');
 const hospitalTreatmentRouter = require('./routes/hospitalTreatments.cjs');
-const bookingsRouter = require('../backend/routes/bookings.cjs');
+const bookingsRouter = require('./routes/bookings.cjs');
 const adminRoutes = require('./routes/admin.cjs');
 const languageRouter = require('./routes/language.cjs');
 const headingRouter = require('./routes/headings.cjs')
 const blogRouter = require('./routes/blog.cjs')
-
+const uploadRoutes = require('./routes/upload.cjs');
+const patientRoutes = require('./routes/patient.cjs');
 
 const app = express();
-const PORT = process.env.PORT || 6002;
 
-// Enhanced Mongoose Connection Setup
-const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.ATLAS_URI, {
-      dbName: 'healthcare',
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 30000,
-      maxPoolSize: 10,
-      retryWrites: true,
-      w: 'majority'
-    });
-    console.log('MongoDB connected via Mongoose');
-  } catch (err) {
-    console.error('Mongoose connection error:', err);
-    process.exit(1);
-  }
-};
+// Enhanced CORS configuration for production
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin) return callback(null, true);
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'https://your-frontend-domain.vercel.app', // Replace with your actual frontend domain
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve static files
+app.use(express.static('public'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/collections', collectionsRouter);
@@ -66,45 +73,80 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/about', aboutRouter);
 app.use('/api/headings', headingRouter);
 app.use('/api/blogs', blogRouter);
-// Your existing routes
-const uploadRoutes = require('./routes/upload.cjs');
 app.use('/api/upload', uploadRoutes);
-const patientRoutes = require('./routes/patient.cjs');
 app.use('/api/patients', patientRoutes);
-// Serve static files from public directory
-app.use(express.static('public'));
-
-// Serve uploaded files from src/backend/uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check with DB status
-app.get('/', (req, res) => {
+app.get('/api/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState;
   res.json({
-    status: 'Healthcare Database API',
-    dbStatus: dbStatus === 1 ? 'Connected' : 'Disconnected'
+    status: 'Healthcare Database API is running',
+    dbStatus: dbStatus === 1 ? 'Connected' : 'Disconnected',
+    timestamp: new Date().toISOString()
   });
 });
 
-// Start server with DB connection
-const startServer = async () => {
+// Enhanced Mongoose Connection Setup with retry logic
+const connectDB = async () => {
   try {
-    await connectDB();
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+    if (!process.env.ATLAS_URI) {
+      throw new Error('ATLAS_URI environment variable is not defined');
+    }
+
+    await mongoose.connect(process.env.ATLAS_URI, {
+      dbName: 'healthcare',
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 30000,
+      maxPoolSize: 10,
+      retryWrites: true,
+      w: 'majority'
     });
+    console.log('MongoDB connected via Mongoose');
   } catch (err) {
-    console.error('Server startup failed:', err);
-    process.exit(1);
+    console.error('Mongoose connection error:', err);
+    // In serverless environment, we don't want to exit process
+    // Let the connection retry on next request
   }
 };
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  await mongoose.disconnect();
-  console.log('Mongoose connection closed');
-  process.exit(0);
+// Connect to database
+connectDB();
+
+// Handle MongoDB connection events
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected');
 });
 
-// Start the application
-startServer();
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('MongoDB reconnected');
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Error:', error);
+  res.status(error.status || 500).json({
+    error: {
+      message: error.message || 'Internal Server Error'
+    }
+  });
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
+// For Vercel serverless functions, we need to export the app
+module.exports = app;
+
+// For local development, start the server normally
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 6002;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
