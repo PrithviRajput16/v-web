@@ -8,7 +8,7 @@
     ],
     "routes": [
         {
-            "src": "/(.*)",
+            "src": "/api/(.*)",
             "dest": "/server.cjs",
             "methods": [
                 "GET",
@@ -19,9 +19,13 @@
                 "OPTIONS",
                 "HEAD"
             ]
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/server.cjs",
+            "methods": [
+                "GET"
+            ]
         }
-    ],
-    "env": {
-        "NODE_ENV": "production"
-    }
+    ]
 }

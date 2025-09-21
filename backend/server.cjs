@@ -2,32 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 require('dotenv').config({ path: './config.env' });
-const path = require('path')
-
-// Import routes
-const aboutRouter = require('./routes/about.cjs');
-const collectionsRouter = require('./routes/collections.cjs');
-const serviceRouter = require('./routes/services.cjs');
-const hospitalRouter = require('./routes/hospitals.cjs')
-const procedureCostsRouter = require('./routes/procedureCosts.cjs');
-const patientOpinionsRouter = require('./routes/patientOpinion.cjs');
-const faqsRouter = require('./routes/faqs.cjs');
-const assistanceRouter = require('./routes/assistance.cjs');
-const doctorRouter = require('./routes/doctor.cjs');
-const treatmentRoutes = require('./routes/treatments.cjs');
-const doctorTreatmentRouter = require('./routes/doctorTreatments.cjs');
-const hospitalTreatmentRouter = require('./routes/hospitalTreatments.cjs');
-const bookingsRouter = require('./routes/bookings.cjs');
-const adminRoutes = require('./routes/admin.cjs');
-const languageRouter = require('./routes/language.cjs');
-const headingRouter = require('./routes/headings.cjs')
-const blogRouter = require('./routes/blog.cjs')
-const uploadRoutes = require('./routes/upload.cjs');
-const patientRoutes = require('./routes/patient.cjs');
+const path = require('path');
 
 const app = express();
+const PORT = process.env.PORT || 6002;
 
-// Enhanced CORS configuration for production
+// Enhanced CORS configuration for Vercel
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl requests)
@@ -35,13 +15,17 @@ app.use(cors({
 
     const allowedOrigins = [
       'http://localhost:3000',
-      'https://your-frontend-domain.vercel.app', // Replace with your actual frontend domain
-      process.env.FRONTEND_URL
+      'http://localhost:3001',
+      process.env.FRONTEND_URL,
+      'https://*.vercel.app'
     ].filter(Boolean);
 
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+    if (allowedOrigins.indexOf(origin) !== -1 ||
+      allowedOrigins.some(allowed => origin.endsWith(allowed)) ||
+      process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
+      console.log('CORS blocked for origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -51,102 +35,199 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files
-app.use(express.static('public'));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Routes
-app.use('/api/collections', collectionsRouter);
-app.use('/api/services', serviceRouter);
-app.use('/api/hospitals', hospitalRouter);
-app.use('/api/procedure-costs', procedureCostsRouter);
-app.use('/api/patient-opinions', patientOpinionsRouter);
-app.use('/api/faqs', faqsRouter);
-app.use('/api/assistance', assistanceRouter);
-app.use('/api/doctors', doctorRouter);
-app.use('/api/treatments', treatmentRoutes);
-app.use('/api/doctor-treatment', doctorTreatmentRouter);
-app.use('/api/hospital-treatment', hospitalTreatmentRouter);
-app.use('/api/booking', bookingsRouter);
-app.use('/api/language', languageRouter);
-app.use('/api/admin', adminRoutes);
-app.use('/api/about', aboutRouter);
-app.use('/api/headings', headingRouter);
-app.use('/api/blogs', blogRouter);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/patients', patientRoutes);
-
-// Health check with DB status
-app.get('/api/health', (req, res) => {
-  const dbStatus = mongoose.connection.readyState;
-  res.json({
-    status: 'Healthcare Database API is running',
-    dbStatus: dbStatus === 1 ? 'Connected' : 'Disconnected',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Enhanced Mongoose Connection Setup with retry logic
+// Enhanced Mongoose Connection Setup for serverless
 const connectDB = async () => {
+  // Check if we're already connected
+  if (mongoose.connection.readyState === 1) {
+    console.log('Using existing MongoDB connection');
+    return mongoose.connection;
+  }
+
   try {
     if (!process.env.ATLAS_URI) {
       throw new Error('ATLAS_URI environment variable is not defined');
     }
 
-    await mongoose.connect(process.env.ATLAS_URI, {
+    const conn = await mongoose.connect(process.env.ATLAS_URI, {
       dbName: 'healthcare',
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 30000,
-      maxPoolSize: 10,
+      maxPoolSize: 5, // Reduced for serverless
+      minPoolSize: 1,
+      family: 4, // Use IPv4
       retryWrites: true,
       w: 'majority'
     });
+
     console.log('MongoDB connected via Mongoose');
+    return conn;
   } catch (err) {
     console.error('Mongoose connection error:', err);
-    // In serverless environment, we don't want to exit process
-    // Let the connection retry on next request
+    // In serverless, we don't exit the process
+    throw err;
   }
 };
 
-// Connect to database
-connectDB();
+// Global connection cache for serverless
+let cachedConnection = null;
 
-// Handle MongoDB connection events
-mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
+const connectToDatabase = async () => {
+  if (cachedConnection) {
+    return cachedConnection;
+  }
+
+  try {
+    cachedConnection = await connectDB();
+    return cachedConnection;
+  } catch (error) {
+    console.error('Database connection failed:', error);
+    throw error;
+  }
+};
+
+// Serve static files
+app.use(express.static('public'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Health check with DB status (important for Vercel)
+app.get('/api/health', async (req, res) => {
+  try {
+    await connectToDatabase();
+    const dbStatus = mongoose.connection.readyState;
+    res.json({
+      status: 'Healthcare Database API is running',
+      dbStatus: dbStatus === 1 ? 'Connected' : 'Disconnected',
+      environment: process.env.NODE_ENV || 'development',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'Healthcare Database API is running',
+      dbStatus: 'Connection failed',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
-mongoose.connection.on('error', (err) => {
-  console.error('MongoDB connection error:', err);
-});
+// Load routes with error handling
+const loadRoute = (routePath, routeName) => {
+  try {
+    const route = require(routePath);
+    app.use(`/api/${routeName}`, route);
+    console.log(`✓ Loaded route: /api/${routeName}`);
+    return true;
+  } catch (error) {
+    console.error(`✗ Failed to load route ${routeName}:`, error.message);
+    // Create a placeholder route to avoid crashes
+    app.use(`/api/${routeName}`, (req, res) => {
+      res.status(501).json({
+        error: `Route ${routeName} is not implemented`,
+        message: 'This API endpoint is temporarily unavailable'
+      });
+    });
+    return false;
+  }
+};
 
-mongoose.connection.on('reconnected', () => {
-  console.log('MongoDB reconnected');
-});
+// Load all routes
+loadRoute('./routes/about.cjs', 'about');
+loadRoute('./routes/collections.cjs', 'collections');
+loadRoute('./routes/services.cjs', 'services');
+loadRoute('./routes/hospitals.cjs', 'hospitals');
+loadRoute('./routes/procedureCosts.cjs', 'procedure-costs');
+loadRoute('./routes/patientOpinion.cjs', 'patient-opinions');
+loadRoute('./routes/faqs.cjs', 'faqs');
+loadRoute('./routes/assistance.cjs', 'assistance');
+loadRoute('./routes/doctor.cjs', 'doctors');
+loadRoute('./routes/treatments.cjs', 'treatments');
+loadRoute('./routes/doctorTreatments.cjs', 'doctor-treatment');
+loadRoute('./routes/hospitalTreatments.cjs', 'hospital-treatment');
+loadRoute('./routes/bookings.cjs', 'booking');
+loadRoute('./routes/admin.cjs', 'admin');
+loadRoute('./routes/language.cjs', 'language');
+loadRoute('./routes/headings.cjs', 'headings');
+loadRoute('./routes/blog.cjs', 'blogs');
+loadRoute('./routes/upload.cjs', 'upload');
+loadRoute('./routes/patient.cjs', 'patients');
 
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('Error:', error);
-  res.status(error.status || 500).json({
-    error: {
-      message: error.message || 'Internal Server Error'
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Healthcare API Server',
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    endpoints: {
+      health: '/api/health',
+      docs: 'Available endpoints: /api/*'
     }
   });
 });
 
-// 404 handler for API routes
-app.use('/api/*', (req, res) => {
-  res.status(404).json({ error: 'API endpoint not found' });
+// FIXED: 404 handler for API routes - use a parameter instead of *
+app.use('/api/:unmatchedRoute', (req, res) => {
+  res.status(404).json({
+    error: 'API endpoint not found',
+    path: req.originalUrl,
+    attemptedRoute: req.params.unmatchedRoute
+  });
 });
 
-// For Vercel serverless functions, we need to export the app
-module.exports = app;
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Server Error:', error);
+  res.status(error.status || 500).json({
+    error: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : error.message,
+    ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
+  });
+});
+
+// Vercel serverless function handler
+const handler = async (req, res) => {
+  // Connect to database on each request (Vercel serveless functions are stateless)
+  try {
+    await connectToDatabase();
+  } catch (error) {
+    console.error('Database connection failed in handler:', error);
+    // Don't fail the request completely, but note the DB issue
+    req.dbConnectionFailed = true;
+  }
+
+  // Pass the request to Express
+  return app(req, res);
+};
+
+// For Vercel serverless functions
+module.exports = handler;
 
 // For local development, start the server normally
 if (process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 6002;
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  const startServer = async () => {
+    try {
+      await connectToDatabase();
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Health check: http://localhost:${PORT}/api/health`);
+      });
+    } catch (err) {
+      console.error('Server startup failed:', err);
+      process.exit(1);
+    }
+  };
+
+  // Graceful shutdown for local development
+  process.on('SIGINT', async () => {
+    console.log('Shutting down server...');
+    try {
+      await mongoose.disconnect();
+      console.log('MongoDB connection closed');
+    } catch (error) {
+      console.error('Error closing MongoDB connection:', error);
+    }
+    process.exit(0);
   });
+
+  startServer();
 }
