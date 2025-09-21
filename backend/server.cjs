@@ -4,19 +4,19 @@ const mongoose = require('mongoose');
 const path = require('path');
 
 // Use environment variables directly (Vercel provides these)
-const ATLAS_URI = process.env.ATLAS_URI;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Only use dotenv in development
 if (NODE_ENV === 'development') {
   try {
+    console.log('hehe: dev');
     require('dotenv').config({ path: './config.env' });
     console.log('Development environment variables loaded from config.env');
   } catch (error) {
     console.warn('config.env not found, using process environment variables');
   }
 }
-
+const ATLAS_URI = process.env.ATLAS_URI;
 const app = express();
 const PORT = process.env.PORT || 6002;
 
@@ -58,7 +58,7 @@ const connectDB = async () => {
   }
 };
 
-// Routes - Load with error handling
+// Routes - Load with error handling (NO FALLBACK)
 const loadRoute = (routePath, routeName) => {
   try {
     const route = require(routePath);
@@ -67,33 +67,7 @@ const loadRoute = (routePath, routeName) => {
     return true;
   } catch (error) {
     console.error(`✗ Failed to load route ${routeName}:`, error.message);
-
-    // Create placeholder route that works with database
-    app.use(`/api/${routeName}`, async (req, res) => {
-      try {
-        // Try to get data from database if connected
-        if (mongoose.connection.readyState === 1) {
-          const collectionName = routeName.toLowerCase();
-          try {
-            const data = await mongoose.connection.db.collection(collectionName).find({}).toArray();
-            return res.json(data);
-          } catch (dbError) {
-            // Collection doesn't exist, return empty array
-            return res.json([]);
-          }
-        } else {
-          return res.status(503).json({
-            error: 'Database not connected',
-            message: 'Please try again later'
-          });
-        }
-      } catch (error) {
-        res.status(500).json({
-          error: 'Internal server error',
-          message: error.message
-        });
-      }
-    });
+    // NO FALLBACK - just log the error
     return false;
   }
 };
@@ -144,7 +118,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // 404 handler for API routes
-// Use a parameter instead of wildcard for 404 handling
 app.use('/api/:unmatchedRoute', (req, res) => {
   res.status(404).json({
     error: 'API endpoint not found',
@@ -152,6 +125,7 @@ app.use('/api/:unmatchedRoute', (req, res) => {
     attemptedRoute: req.params.unmatchedRoute
   });
 });
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Server Error:', error);
@@ -183,7 +157,11 @@ module.exports = handler;
 if (NODE_ENV !== 'production') {
   const startServer = async () => {
     try {
+      console.log('NODE:', NODE_ENV);
+      console.log('ATLAS_URI:', ATLAS_URI);
+
       await connectDB();
+
       app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
         console.log(`Environment: ${NODE_ENV}`);
