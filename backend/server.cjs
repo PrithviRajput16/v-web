@@ -70,7 +70,13 @@ try {
 } catch (error) {
   console.error('✗ Failed to load route about:', error.message, error.stack);
 }
-
+try {
+  const headingsRoute = require('./routes/headings.cjs');
+  app.use('/api/about', headingsRoute);
+  console.log('✓ Loaded route: /api/headings');
+} catch (error) {
+  console.error('✗ Failed to load route about:', error.message, error.stack);
+}
 try {
   const languageRoute = require('./routes/language.cjs');
   app.use('/api/language', languageRoute);
