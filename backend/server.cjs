@@ -72,7 +72,7 @@ try {
 }
 try {
   const headingsRoute = require('./routes/headings.cjs');
-  app.use('/api/about', headingsRoute);
+  app.use('/api/headings', headingsRoute);
   console.log('✓ Loaded route: /api/headings');
 } catch (error) {
   console.error('✗ Failed to load route about:', error.message, error.stack);
