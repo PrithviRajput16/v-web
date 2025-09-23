@@ -6,7 +6,7 @@ let globalLanguage = "EN"; // default language
 let listeners = [];
 
 export function useLanguage() {
-    const [language, setLanguage] = useState();
+    const [language, setLanguage] = useState(() => localStorage.getItem("language") || 'EN');
     const [availableLanguages, setAvailableLanguages] = useState([]); // <-- added
 
     // function to update global + local state

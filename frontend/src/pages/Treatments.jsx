@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { FaClock, FaFilter, FaProcedures, FaSearch, FaStar } from "react-icons/fa";
-import SectionHeading from "../components/home/SectionHeading";
 import TreatmentCard from "../components/TreatmentCard";
 import url_prefix from "../data/variable";
 import { useLanguage } from '../hooks/useLanguage';
@@ -11,12 +10,12 @@ const Treatments = () => {
   const [error, setError] = useState(null);
   const [language] = useLanguage();
   const [headings, setHeadings] = useState({
-    'title': 'Not Available For Selected Language',
-    'sub': '',
-    'desc': ''
+    heading: 'Not Available For Selected Language',
+    subheading: '',
+    description: ''
   });
 
-  // Fetch treatments data from API
+  // Fetch treatments and headings data from API
   useEffect(() => {
     if (!language) {
       console.log('Language not yet available, skipping fetch');
@@ -24,52 +23,46 @@ const Treatments = () => {
     }
 
     const fetchHeadings = async () => {
-      const response = await fetch(url_prefix + '/api/headings/treatment/' + language);
-      const result = await response.json();
-      if (result.success) {
-        console.log(result.data['home'])
-        // setHeadings(result.data['home'][0])
-
+      try {
+        const response = await fetch(`${url_prefix}/api/headings/treatment/${language}`);
+        const result = await response.json();
+        if (result.success) {
+          setHeadings(result.data.page[0]); // Fetch headings for 'page' type
+        }
+      } catch (error) {
+        console.error('Error fetching headings:', error);
       }
-    }
+    };
+
     const fetchTreatments = async () => {
       try {
-        const response = await fetch(url_prefix + '/api/treatments/all');
-
+        const response = await fetch(`${url_prefix}/api/treatments/all`);
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
 
         const result = await response.json();
-
         if (!result.success || !Array.isArray(result.data)) {
           throw new Error('Invalid API response structure');
         }
-        if (result.success) {
-          let dataToSet;
-          if (Array.isArray(result.data)) {
-            dataToSet = result.data.filter(
-              item => item.language?.toLowerCase() === language?.toLowerCase()
-            );
-          } else {
-            dataToSet =
-              result.data.language?.toLowerCase() === language?.toLowerCase()
-                ? [result.data]
-                : [];
-          }
 
-          if (dataToSet.length > 0) {
-            console.log('Setting aboutData:', dataToSet);
-            setTreatments(dataToSet);
-            setError(null);
-            setHeadings({
-              title: dataToSet[0].ptitle,
-              desc: dataToSet[0].pdesc
-            })
-          }
+        let dataToSet;
+        if (Array.isArray(result.data)) {
+          dataToSet = result.data.filter(
+            item => item.language?.toLowerCase() === language?.toLowerCase()
+          );
+        } else {
+          dataToSet =
+            result.data.language?.toLowerCase() === language?.toLowerCase()
+              ? [result.data]
+              : [];
         }
 
-
+        if (dataToSet.length > 0) {
+          console.log('Setting treatments:', dataToSet);
+          setTreatments(dataToSet);
+          setError(null);
+        }
       } catch (err) {
         console.error('Fetch error:', err);
         setError(err.message);
@@ -79,6 +72,7 @@ const Treatments = () => {
       }
     };
 
+    fetchHeadings();
     fetchTreatments();
   }, [language]);
 
@@ -110,7 +104,6 @@ const Treatments = () => {
     const matchesCategory = filters.category ? treatment.category === filters.category : true;
     const matchesComplexity = filters.complexity ? treatment.typicalComplexity === filters.complexity : true;
 
-    // Duration filtering
     let matchesMinDuration = true;
     let matchesMaxDuration = true;
 
@@ -284,13 +277,10 @@ const Treatments = () => {
         {/* Main Content */}
         <div className="lg:col-span-3">
           {/* Header */}
-
-          <SectionHeading
-            center={false}
-            title={'treatment'}
-            page={'page'}
-          />
-
+          <div className="bg-white rounded-2xl shadow-md p-6 mb-8 border border-gray-100">
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">{headings.heading}</h1>
+            <p className="text-gray-600">{headings.description}</p>
+          </div>
 
           {/* Treatments Grid */}
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
