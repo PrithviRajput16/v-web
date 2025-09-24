@@ -18,6 +18,10 @@
             "src": "/uploads/(.*)",
             "dest": "/uploads/$1"
         },
+         {
+      "src": "/videos/(.*)",
+      "dest": "/videos/$1"
+    },
         {
             "src": "/(.*)",
             "dest": "/index.html"
