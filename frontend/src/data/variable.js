@@ -1,5 +1,5 @@
 // const url_prefix = 'http://localhost:6003';
-const url_prefix = 'https://v-web-wheat.vercel.app';
+const url_prefix = 'v-web-backend.vercel.app';
 
 
 export default url_prefix
