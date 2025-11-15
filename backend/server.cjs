@@ -33,13 +33,12 @@ app.use(cors({
     "https://v-web-frontend-gaci.vercel.app",
     "https://v-web-frontend-beta.vercel.app"
   ],
-  methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-  allowedHeaders: ["Content-Type", "Authorization"],
+  // methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  // allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
 
 // Handle OPTIONS preflight for all routes
-app.options("*", cors());
 app.use(express.json());
 
 // MongoDB connection
