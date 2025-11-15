@@ -26,6 +26,7 @@ app.use(cors({
     'https://v-web-frontend-flame.vercel.app',
     'https://v-web-frontend-s8pe.vercel.app',
     'https://v-web-frontend-gaci.vercel.app',
+    'https://v-web-five.vercel.app',
     'https://v-web-frontend-beta.vercel.app' // Add new frontend domain
   ],
   credentials: true
